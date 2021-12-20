@@ -13,15 +13,17 @@ import "./Offering.sol";
  * as {totalSupply} ERC20 tokens.
  * Must implement ERC721Holder to successfully use IERC721.safeTransferFrom by factory contract
  */
-contract ERC20FractionToken is ERC20, ERC721Holder {
+contract ERC20FractionToken is ERC20, ERC721Holder, Offering {
     
+    // state for every ERC20FractionToken
+    // the state variable is one directional(straightforward),
     enum OfferingState {
         NEW,
         ACTIVE,
-        INACTIVE,
         FINISH,
         BUYBACK
     }
+    
 
     address immutable private nftAddress;
 
@@ -29,8 +31,8 @@ contract ERC20FractionToken is ERC20, ERC721Holder {
 
     address immutable private nftOwner;
 
-    // state for every ERC20FractionToken
-    // the state variable is one directional(straightforward),
+    uint256 private tokenFixedPrice;
+
     OfferingState public offeringState;
     
     constructor(string memory _tokenName, string memory _tokenSymbol, address _tokenContractAddress, address _nftOwner, uint256 _tokenId, uint256 _tokenSupply) ERC20(_tokenName,_tokenSymbol) {
@@ -38,7 +40,28 @@ contract ERC20FractionToken is ERC20, ERC721Holder {
        id = _tokenId;
        nftOwner = _nftOwner;
        _mint(_nftOwner,_tokenSupply);
+       offeringState = OfferingState.NEW;
     }
+
+    function startOffering(uint256 _tokenFixedPrice) external virtual override {
+        require(offeringState == OfferingState.NEW,"start Offering occur only one");
+        require(msg.sender == nftOwner,"only the nft owner can start the offering");
+
+        offeringState = OfferingState.ACTIVE;
+        tokenFixedPrice = _tokenFixedPrice;
+    }
+
+    function bid() virtual override external payable {
+        require(offeringState == OfferingState.ACTIVE,"bidding allowed only in active offering");
+        // require();
+
+    }
+
+    function endOffering() override external virtual {
+
+    }
+
+
 
     function buyback() external {
         require(msg.sender == nftOwner,"msg.sender must be the nft owner");
