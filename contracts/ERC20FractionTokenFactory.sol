@@ -5,11 +5,15 @@ import "./ERC20FractionToken.sol";
 
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 
+import "hardhat/console.sol";
 
 contract ERC20FractionTokenFactory is Ownable {
 
     ERC20FractionToken[] public tokens;
+    uint256 public tokenCount;
     mapping(address=>address) public userToTokens;
+
+    event FractionEvent(address tokenContractAddress, uint256 tokenId,address fractionContractAddress, uint256 tokenIndex);
     
     /**
      * @dev 
@@ -18,14 +22,16 @@ contract ERC20FractionTokenFactory is Ownable {
      * _tokenContractAddress: contract address of the NFT which you are choosing to fractionalize,you msg.sender must own it
      * _tokenId: identifier used for your ERC-721 NFT in its respective smart contract
      */
-    function createERC20FractionToken(string memory _tokenName,string memory _tokenSymbol, address _tokenContractAddress, uint256 _tokenId,uint256 _tokenSuply) public {
+    function create(string memory _tokenName,string memory _tokenSymbol, address _tokenContractAddress, uint256 _tokenId,uint256 _tokenSuply) public {
+        // console.log("msg.sender",msg.sender);
         // create a new ERC20Token with the NFT 
         ERC20FractionToken token = new ERC20FractionToken(_tokenName,_tokenSymbol,_tokenContractAddress, msg.sender, _tokenId, _tokenSuply);
         // transfer the nft from owner to new erc20 contract
         // the owner of the nft must be msg.sender and _tokenId must be ownd by msg.sender
+        // also the owner must call IERC721.approve before call safeTransferFrom
         IERC721(_tokenContractAddress).safeTransferFrom(msg.sender,address(token),_tokenId);
         tokens.push(token);
-        userToTokens[msg.sender] = address(token);
-    }
-    
+        tokenCount++;        
+        emit FractionEvent(_tokenContractAddress, _tokenId, address(token), tokenCount - 1);
+    }    
 }
