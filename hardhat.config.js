@@ -15,18 +15,6 @@ task("accounts", "Prints the list of accounts", async (taskArgs, hre) => {
   }
 });
 
-task("deploy-factory", "Deploys the Factory Vault contract ", async(taskArgs,hre) => {
-  await hre.run("compile");
-  
-  const VaultFactory = await ethers.getContractFactory("VaultFactory"); // 
-  const VaultFactoryContract = await VaultFactory.deploy();
-  console.log('Waiting for VaultFactory deployment...');
-  await VaultFactoryContract.deployed();
-
-  console.log("VaultFactoryAddress", VaultFactoryContract.address);
-});
-
-
 // You need to export an object to set up your config
 // Go to https://hardhat.org/config/ to learn more
 
@@ -48,5 +36,5 @@ module.exports = {
   },
   etherscan: {
     apiKey: process.env.ETHERSCAN_API_KEY,
-  },
+  }
 };
