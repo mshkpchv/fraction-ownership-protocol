@@ -12,6 +12,8 @@ task("accounts", "Prints the list of accounts", async (taskArgs, hre) => {
 
   for (const account of accounts) {
     console.log(account.address);
+    // console.log(account._signer);
+    console.log(Object.keys(account._signer));
   }
 });
 

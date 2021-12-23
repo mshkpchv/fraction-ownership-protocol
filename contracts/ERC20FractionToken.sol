@@ -7,6 +7,7 @@ import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import "./Offering.sol";
 
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
+import "hardhat/console.sol";
 
 /**
  * @dev Implementation of the {ERC20} interface.
@@ -20,7 +21,7 @@ contract ERC20FractionToken is ERC20, ERC721Holder {
     
     // state for every ERC20FractionToken
     // the state variable is one directional(straightforward),
-    enum OfferingState {
+    enum Stage {
         NEW,
         ACTIVE,
         FINISH,
@@ -31,91 +32,126 @@ contract ERC20FractionToken is ERC20, ERC721Holder {
 
     uint256 immutable private id;
 
-    address immutable private nftOwner;
+    address immutable private moderatorNFT;
 
     // offering variables
-    // @dev rate for which 1 Wei is mapped to 1 FractionWei
-    uint256 private immutable rate = 1;
 
     // @dev price per Token
     uint256 private pricePerToken;
     
     // @dev price per Token, zero if there are not offering
-    uint256 private offeringTokens;
+    uint256 private tokensForSale;
 
     // @dev the max tokens(in wei) for offering 
-    uint256 private cap;
+    uint256 private maxCap;
 
     //@dev amount of wei raised, after offering must go to NFT moderator
-    uint256 private weiRaised;
+    uint256 private amountRaised;
 
-    
+    Stage public stage;
 
-    OfferingState public offeringState;
-    
-    constructor(string memory _tokenName, string memory _tokenSymbol, address _tokenContractAddress, address _nftOwner, uint256 _tokenId, uint256 _tokenSupply) ERC20(_tokenName,_tokenSymbol) {
+    // offering length variables
+
+    uint256 public offeringEnd;
+
+    uint256 private offeringLength;
+        
+    uint256 private offeringStart;
+
+    struct Bid {
+        address sender;
+        uint256 amount;
+    }
+    address[] private bidders; 
+    Bid[] public bids;
+
+
+    constructor(string memory _tokenName, string memory _tokenSymbol, address _tokenContractAddress, address _moderatorNFT, uint256 _tokenId, uint256 _tokenSupply) ERC20(_tokenName,_tokenSymbol) {
        nftAddress = _tokenContractAddress;
        id = _tokenId;
-       nftOwner = _nftOwner;
-       _mint(_nftOwner,_tokenSupply);
-       offeringState = OfferingState.NEW;
+       moderatorNFT = _moderatorNFT;
+       _mint(_moderatorNFT,_tokenSupply);
+       stage = Stage.NEW;
     }
 
-    function startOffering(uint256 _pricePerToken, uint256 _tokenCount ) external virtual {
-        require(offeringState == OfferingState.NEW,"offering: can be started just one time");
-        require(msg.sender == nftOwner,"only nft moderator can start offering");
-        require(_tokenCount < moderatorTokens(),"offering: moderator tokens > offering token");
+    function startOffering(uint256 _pricePerToken, uint256 _tokensForSale ) external virtual {
+        require(stage == Stage.NEW,"offering: can start single time");
+        require(msg.sender == moderatorNFT,"nft moderator can start offering");
+        require(_tokensForSale < moderatorTokens(),"offering: moderator tokens > offering token");
+        
+        offeringEnd = block.timestamp + offeringLength;
 
         pricePerToken = _pricePerToken;
-        offeringTokens = _tokenCount;
-        cap = _tokenCount;
-        
+        tokensForSale = _tokensForSale;
+        maxCap = _tokensForSale;
         // transfer this token to the contact itself for security reasons
-        transfer(address(this), offeringTokens);
+        transfer(address(this), tokensForSale);
 
-        offeringState = OfferingState.ACTIVE;
+        stage = Stage.ACTIVE;
     }
 
     function bid() virtual external payable {
-        require(offeringState == OfferingState.ACTIVE,"offering: allowed only in Active state");
-        uint256 weiAmount = msg.value;
-        preValidatePurchase(msg.sender, weiAmount); 
-        // add the weiRaised
-        weiRaised = weiRaised.add(weiAmount);
-        offeringTokens = offeringTokens - weiRaised;
-        uint256 tokens = calcTokenAmount(weiAmount);
-       
-        transfer(msg.sender,tokens);
+        require(stage == Stage.ACTIVE,"offering: allowed only in Active state");
+        uint256 amount = msg.value;
+        validateSenderAndAmount(msg.sender, amount);
+        require(block.timestamp < offeringEnd, "offering: offeringended");
+        
+        if(amountRaised.add(amount) <= maxCap ){
+            uint256 change = maxCap.sub(amountRaised);
+            // send back to user change wei
+            // finish the auction
+            // stage = Stage.FINISH;
+        }else {
+            // 
+        }
+        amountRaised = amountRaised.add(amount);
+        tokensForSale = tokensForSale.sub(amount);
+        // console.log("sender",msg.sender,"tokens",tokensForSale);
+        bids.push(Bid(msg.sender, amount));
+
+        //TODO finish the sale if capacity is max
     }
 
     function endOffering() external virtual {
+        require(stage == Stage.ACTIVE,"offering: allowed only in Active state");
+        require(block.timestamp >= offeringEnd, "end:auction live");
+        stage = Stage.FINISH;
 
+        distributeTokensAndEthers();
     }
 
     function getPrice() external view returns(uint256) {
         return pricePerToken;
     }
 
-    function calcTokenAmount(uint256 weiAmount) internal pure returns(uint256) {
-        return weiAmount.mul(rate);
+    function getRemainderTokens() external view returns(uint256) {
+        return tokensForSale;
     }
 
-    function preValidatePurchase(address participant, uint256 weiAmount ) internal view {
-        require(participant != address(0), "participant is the zero address");
-        require(weiAmount != 0, "weiAmount is 0");
-        require(weiRaised.add(weiAmount) <= offeringTokens, "offeringTokens exceededs");
+    function getAmountRaised() external view returns(uint256) {
+        return amountRaised;
     }
 
     function buyback() external {
         // todo 100 % owner of the tokens
-        require(msg.sender == nftOwner,"msg.sender must be the nft owner");
+        require(msg.sender == moderatorNFT,"msg.sender must be moderator");
         _burn(msg.sender,totalSupply());
         // transfer back the nft to the owner
         IERC721(nftAddress).transferFrom(address(this), msg.sender, id);   
     }
 
     function moderatorTokens() private view returns(uint256) {
-        return balanceOf(nftOwner);
+        return balanceOf(moderatorNFT);
     }
 
+    function validateSenderAndAmount(address bidder, uint256 amount ) private pure {
+        require(bidder != address(0), "bidder is the zero address");
+        // TODO bidder has not played
+        require(amount != 0, "weiAmount is 0");
+        // require(amountRaised.add(amount) <= maxCap, "tokensForSale exceededs");
+    }
+
+    function distributeTokensAndEthers() internal {
+        
+    }
 }

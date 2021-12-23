@@ -2,12 +2,13 @@ const hre  = require("hardhat");
 const ethers = hre.ethers;
 const { expect } = require("chai");
 const utils = require("./test-contracts/utils.js");
+const { VoidSigner } = require("ethers");
 
 describe("ERC20FractionToken", function () {
-  let FRACTION_CONTRACT = null;
+  let FRACTION_CONTRACT_FACTORY = null;
   let NFTContract = null;
   let nftContractTokenId = null;
-  let wallet = null;
+  let mainWallet = null;
   let mintNFTnumber = 1;
   let ERC20FractionTokenObj = null;
   let erc20abi = null;
@@ -16,21 +17,23 @@ describe("ERC20FractionToken", function () {
   let tokenName = "Misho";
   let tokenSymbol = "MSH";
   let totalSupply = 5000;
+  let TOKENS_FOR_SALE = null;
 
   before(async function(){
-    wallet = await ethers.getSigner()
-    const [contract,ids ] = await utils.deployAndMintNFT(wallet,mintNFTnumber);
+    // wallet = await ethers.getSigner()
+    mainWallet = utils.createRandomWallet()
+    const [contract,ids ] = await utils.deployAndMintNFT(mainWallet,mintNFTnumber);
     NFTContract = contract;
     tokenIds = ids;
     nftContractTokenId = tokenIds[0];
 
     
-    const fractionFactory = await ethers.getContractFactory("ERC20FractionTokenFactory", wallet);
-    FRACTION_CONTRACT = await fractionFactory.deploy();
-    await FRACTION_CONTRACT.deployed();
+    const fractionFactory = await ethers.getContractFactory("ERC20FractionTokenFactory", mainWallet);
+    FRACTION_CONTRACT_FACTORY = await fractionFactory.deploy();
+    await FRACTION_CONTRACT_FACTORY.deployed();
 
     
-    ERC20FractionTokenObj = await utils.doFractionNFT(wallet,FRACTION_CONTRACT,
+    ERC20FractionTokenObj = await utils.doFractionNFT(mainWallet,FRACTION_CONTRACT_FACTORY,
         NFTContract,nftContractTokenId,tokenName,tokenSymbol,totalSupply);
 
     erc20abi = [
@@ -51,54 +54,60 @@ describe("ERC20FractionToken", function () {
     fractionabi = erc20abi.concat([
         "function buyback()",
         "function startOffering(uint256 pricePerToken, uint256 tokenCount)",
-        "function offeringState() view returns (uint256)",
-        "function bid() payable"
+        "function stage() view returns (uint256)",
+        "function bid() payable",
+        "function getRemainderTokens() view returns(uint256)",
+        "function getAmountRaised() view returns(uint256)",
+
     ]);
 
 
   })
 
-  // it("should fractionContract be ERC20 compatible", async function(){
+  it("should fractionContract be ERC20 compatible", async function(){
     
     
-  //   const fractionContract = new ethers.Contract(ERC20FractionTokenObj.fractionContractAddress,erc20abi,wallet);
+    const fractionContract = new ethers.Contract(ERC20FractionTokenObj.fractionContractAddress,erc20abi,mainWallet);
     
-  //   expect(await fractionContract.symbol()).to.be.equal(tokenSymbol);
-  //   expect(await fractionContract.name()).to.be.equal(tokenName);
-  //   expect(await fractionContract.decimals()).to.be.equal(18);
+    expect(await fractionContract.symbol()).to.be.equal(tokenSymbol);
+    expect(await fractionContract.name()).to.be.equal(tokenName);
+    expect(await fractionContract.decimals()).to.be.equal(18);
 
-  //   let walletAddress = await wallet.getAddress();
-  //   expect(await fractionContract.balanceOf(walletAddress)).to.be.equal(500);
-  //   expect(await fractionContract.totalSupply()).to.be.equal(500);
+    let walletAddress = await mainWallet.getAddress();
+    expect(await fractionContract.balanceOf(walletAddress)).to.be.equal(5000);
+    expect(await fractionContract.totalSupply()).to.be.equal(5000);
 
 
-  // });
+  });
 
-  // it("should random wallet to have 0 ERC20 tokens", async function(){
-  //   let randomWallet = utils.createRandomWallet(wallet.provider);
+  it("should random wallet to have 0 ERC20 tokens", async function(){
+    let randomWallet = utils.createRandomWallet(false);
 
-  //   const fractionContract = new ethers.Contract(ERC20FractionTokenObj.fractionContractAddress, erc20abi, randomWallet);    
+    const fractionContract = new ethers.Contract(ERC20FractionTokenObj.fractionContractAddress, erc20abi, randomWallet);    
 
-  //   let walletAddress = await randomWallet.getAddress();
-  //   expect(await fractionContract.balanceOf(walletAddress)).to.be.equal(0);
-  //   expect(await fractionContract.totalSupply()).to.be.equal(500);
+    let walletAddress = await randomWallet.getAddress();
+    expect(await fractionContract.balanceOf(walletAddress)).to.be.equal(0);
 
-  // });
+  });
 
-  // it("should random wallet do NOT be able to redeem NFT", async function(){
-  //   let randomWallet = utils.createRandomWallet(wallet.provider);
+  it("should random wallet do NOT be able to redeem NFT", async function(){
+    let randomWallet = utils.createRandomWallet(false);
     
-  //   const fractionContract = new ethers.Contract(ERC20FractionTokenObj.fractionContractAddress, fractionabi, randomWallet);    
+    const fractionContract = new ethers.Contract(ERC20FractionTokenObj.fractionContractAddress, fractionabi, randomWallet);    
     
-  //   let buybackTx = fractionContract.buyback();
-  //   // after the success call for this one you
-  //   expect(buybackTx).to.be.revertedWith("msg.sender must be the nft owner");
+    let buybackTx = fractionContract.buyback();
+    // after the success call for this one you
+    expect(buybackTx).to.be.revertedWith("msg.sender must be moderator");
     
-  // });
+  });
 
-  it("should start the offering for the tokens", async function(){
-    let walletAddress = await wallet.getAddress();
-    const fractionContract = new ethers.Contract(ERC20FractionTokenObj.fractionContractAddress, fractionabi, wallet);
+  it("should start offering for the tokens", async function(){
+    let walletAddress = await mainWallet.getAddress();
+    const fractionContract = new ethers.Contract(ERC20FractionTokenObj.fractionContractAddress, fractionabi, mainWallet);
+    
+    expect(await fractionContract.stage()).to.be.equal(0);
+    
+    
     let fractionTokens = await fractionContract.balanceOf(walletAddress);
 
     let tokensForSale = 1000;
@@ -111,23 +120,58 @@ describe("ERC20FractionToken", function () {
     let fractionContractAddress = fractionContract.address;
 
     expect(await fractionContract.balanceOf(fractionContractAddress)).to.be.equal(tokensForSale);
+    // the moderator must have reduce himself the tokens for the offering
     expect(await fractionContract.balanceOf(walletAddress)).to.be.equal(fractionTokens - tokensForSale);
-    expect(await fractionContract.offeringState()).to.be.equal(1);
+    expect(await fractionContract.stage()).to.be.equal(1);
 
-
-    
-    // the owner must have reduce himself the tokens for the offering
-
-    
+    TOKENS_FOR_SALE = tokensForSale
   });
 
-  it("should bid for some tokens", async function(){
-    let randomWallet = utils.createRandomWallet(wallet.provider);
-    const fractionContract = new ethers.Contract(ERC20FractionTokenObj.fractionContractAddress, fractionabi, randomWallet);
+  it("should be the FIST bid for some tokens", async function(){
 
-    const wei = ethers.utils.parseEther("0.0000000000000001");
-	  const bidTx = await fractionContract.bid({value:wei})
+    let randomWallet = utils.createRandomWallet();
+    const fractionContract = new ethers.Contract(ERC20FractionTokenObj.fractionContractAddress, fractionabi, randomWallet);
+    
+    let remainderTokens = await fractionContract.getRemainderTokens();
+    expect(remainderTokens).to.be.equal(TOKENS_FOR_SALE);
+
+    const wei = ethers.utils.parseEther("0.0000000000000001"); // 100 wei
+	  const bidTx = await fractionContract.bid({value:wei});
 	  await bidTx.wait()
+
+    remainderTokens = await fractionContract.getRemainderTokens();
+    expect(remainderTokens).to.be.equal(TOKENS_FOR_SALE - wei.toNumber());
+
+  });
+
+  it("should make concurent bids", async function(){
+
+    const fractionContract = new ethers.Contract(ERC20FractionTokenObj.fractionContractAddress,fractionabi,mainWallet);
+    let beforeTokens = await fractionContract.getRemainderTokens();
+
+    let concurentFunction = async function (randomWallet, wei) {
+
+      const contract = fractionContract.connect(randomWallet);
+      let tx = await contract.bid({value:wei});
+  	  await tx.wait();
+    }
+    const wei = ethers.utils.parseEther("0.0000000000000001"); // 100 wei
+    let howMany = 2;
+    let walletArray = utils.createRandomWallets(howMany);
+    let promises = walletArray.map((_wlt) => concurentFunction(_wlt,wei))
+    
+
+    let combinedPromise = Promise.all(promises)
+      .catch((error) => console.log("error", error));
+
+    await combinedPromise;
+
+    let amountRaised = await fractionContract.getAmountRaised();
+    let remainderTokens = await fractionContract.getRemainderTokens();
+    console.log("amountRaised",amountRaised.toString())
+    console.log("remainderTokens",remainderTokens.toString())
+
+    expect(remainderTokens).to.be.equal(beforeTokens - (howMany * wei.toNumber()));
     
   });
 

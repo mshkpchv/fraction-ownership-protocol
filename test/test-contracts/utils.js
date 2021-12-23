@@ -1,6 +1,11 @@
 const { ethers } = require("hardhat");
 
-
+const PKS = [
+    "0xea6c44ac03bff858b476bba40716402b03e41b8e97e276d1baec7c37d42484a0",
+    "0x689af8efa8c651a91ad287602527f3af2fe9f6501a7ac4b061667b5a93e037fd",
+    "0xde9be858da4a475276426320d5e9262ecfc3ba460bfac56360bfa6c4c28b4ee0",
+    "0xdf57089febbacf7ba0bc227dafbffa9fc08a93fdc68e1e42411a14efcf23656e",
+]
 
 async function deployNFTAndMintTokens(wallet, autonumber=2) {
 
@@ -70,17 +75,48 @@ async function doFractionNFT(wallet, FRACTION_CONTRACT, NFTContract, token, newT
     
 }
 
-function createRandomWallet(provider = undefined){
-    if (provider === undefined){
-        provider = ethers.getDefaultProvider()
-    }
-    rndWallet = ethers.Wallet.createRandom().connect(provider);
-    return rndWallet;
+// function RandomWallet(provider = undefined, addEthers=false){
+//     if (provider === undefined){
+//         provider = ethers.getDefaultProvider()
+//     }
+//     rndWallet = ethers.Wallet.createRandom().connect(provider);
+//     return rndWallet;
+// }
 
+function getProvider(){
+    return ethers.providers.getDefaultProvider('http://localhost:8545');
+}
+
+function _chooseRandomWallet(index){
+
+}
+
+function RandomWallets(number){
+    res = []
+    for(let i = 0; i < number; i++){
+        res.push(RandomWallet())
+    }
+    return res
+}
+
+function RandomWallet(hasEthers = true) {
+    let provider = getProvider()
+    let rndWallet;
+
+    if (hasEthers){
+        let index = Math.floor(Math.random() * PKS.length);
+        rndWallet = new ethers.Wallet(PKS[index],provider);
+    }else{
+        rndWallet = ethers.Wallet.createRandom().connect(provider);
+    }
+
+    return rndWallet;
+    
 }
 
 module.exports = {
     "deployAndMintNFT":deployNFTAndMintTokens,
     "doFractionNFT":doFractionNFT,
-    "createRandomWallet":createRandomWallet   
+    "createRandomWallet":RandomWallet,
+    "createRandomWallets":RandomWallets
 };  

@@ -28,7 +28,7 @@ contract ERC20FractionTokenFactory is Ownable {
         ERC20FractionToken token = new ERC20FractionToken(_tokenName,_tokenSymbol,_tokenContractAddress, msg.sender, _tokenId, _tokenSuply);
         // transfer the nft from owner to new erc20 contract
         // the owner of the nft must be msg.sender and _tokenId must be ownd by msg.sender
-        // also the owner must call IERC721.approve before call safeTransferFrom
+        // also the owner must call IERC721.approve with address(this) before call safeTransferFrom
         IERC721(_tokenContractAddress).transferFrom(msg.sender,address(token),_tokenId);
         tokens.push(token);
         tokenCount++;        
