@@ -27,6 +27,8 @@ contract ERC20FractionToken is ERC20, ERC721Holder {
 
     Auction private auction;
 
+    event Buyback(address buyer);
+
     modifier hasAuction {
         require(
             address(auction) != address(0),
@@ -66,9 +68,11 @@ contract ERC20FractionToken is ERC20, ERC721Holder {
     function buyback() external {
         // must have 100% of the tokens
         uint256 supply = totalSupply();
-        require(balanceOf(msg.sender) == supply,"msg.sender must have all tokens");        
-        _burn(msg.sender,totalSupply());
-        IERC721(nftAddress).transferFrom(address(this), msg.sender, id);   
+        address sender = msg.sender;
+        require(balanceOf(sender) == supply,"msg.sender must have all tokens");        
+        _burn(sender,totalSupply());
+        IERC721(nftAddress).transferFrom(address(this), sender, id);
+        emit Buyback(sender);   
     }
 
     function endOffering() external virtual hasAuction {

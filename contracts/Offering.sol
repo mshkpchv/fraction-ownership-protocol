@@ -17,6 +17,11 @@ interface Offering {
 
 contract DutchAuction {
 
+    struct Bid {
+        address sender;
+        uint256 amount;
+    }
+
     address[] private bidders;
 
     // Bid[] public bids;
@@ -37,18 +42,12 @@ contract BaseAuction {
 contract Auction {
     using SafeMath for uint256;
 
-    struct Bid {
-        address sender;
-        uint256 amount;
-    }
-
     enum Stage {
         INACTIVE,
         ACTIVE,
         ACTIVE_NO_SUPPLY,
         FINISH_TIME
     }
-
 
     Stage public stage;
 
@@ -76,6 +75,13 @@ contract Auction {
     uint256 public auctionEnd;
 
     uint256 public auctionLength;
+
+
+    event Start(address indexed buyer, uint256 tokens);
+
+    event Bid(address buyer, uint256 purchasedTokens);
+
+    event End();
 
 
     constructor(uint256 _rate, address moderator ,address _token, uint256 _tokensForSale, uint256 _totalSupply) {
@@ -125,7 +131,7 @@ contract Auction {
 
     function end() external {
         //TODO time is up and moderator must call it to get if tokens exists
-        require(stage == Stage.ACTIVE_NO_SUPPLY);
+        require(stage == Stage.ACTIVE_NO_SUPPLY || block.timestamp > auctionEnd);
         if (tokensForSale != 0 ) {
             _processPurchase(wallet,tokensForSale);
             tokensForSale = 0;
