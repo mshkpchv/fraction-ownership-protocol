@@ -19,15 +19,6 @@ import "hardhat/console.sol";
 contract ERC20FractionToken is ERC20, ERC721Holder {
     using SafeMath for uint256;
     
-    // state for every ERC20FractionToken
-    // the state variable is one directional(straightforward),
-    enum Stage {
-        NEW,
-        ACTIVE,
-        FINISH,
-        BUYBACK
-    }
-    
     address immutable private nftAddress;
 
     uint256 immutable private id;
@@ -36,64 +27,40 @@ contract ERC20FractionToken is ERC20, ERC721Holder {
 
     Auction private auction;
 
-    bool private hasAuction;
-
+    modifier hasAuction {
+        require(
+            address(auction) != address(0),
+            "There must be auction!"
+        );
+        _;
+    }
 
     constructor(string memory _tokenName, string memory _tokenSymbol, address _tokenContractAddress, address _moderatorNFT, uint256 _tokenId, uint256 _tokenSupply) ERC20(_tokenName,_tokenSymbol) {
        nftAddress = _tokenContractAddress;
        id = _tokenId;
        moderatorNFT = _moderatorNFT;
        _mint(_moderatorNFT,_tokenSupply);
-       hasAuction = false;
     }
 
-    function startOffering(uint256 _pricePerToken, uint256 _tokensForSale ) external virtual {
+    //TODO auction type
+    function startOffering(uint256 _rate, uint256 _tokensForSale) external virtual returns(address) {
         require(msg.sender == moderatorNFT," nft moderator can start soffering");
-        require(_tokensForSale < moderatorTokens(),"offering: moderator tokens > offering token");
-        auction = new Auction(1, moderatorNFT, address(this), _tokensForSale, totalSupply());
-        approve(address(auction), _tokensForSale);
+        require(_tokensForSale < balanceOf(moderatorNFT),"offering: moderator tokens > offering token");
+        require(address(auction) == address(0),"auction:started only one time");
+        require(_rate >= 1,"auction:rate >= 1");
+
+        auction = new Auction(_rate, moderatorNFT, address(this), _tokensForSale, totalSupply());
+        // approve(address(auction), _tokensForSale);
         transfer(address(auction), _tokensForSale);
-        console.log("ERC20FractionToken auction auction",address(auction));
-        hasAuction = true;
+        auction.start();
+
+        console.log("ERC20FractionToken auction auction", address(auction));
+        return address(auction);
     }
 
-    function bid() virtual external payable {
-        // validateSenderAndAmount(msg.sender, amount);
-        // require(block.timestamp < offeringEnd, "offering: offeringended");
-        
-        // if(amountRaised.add(amount) <= maxCap ){
-            // uint256 change = maxCap.sub(amountRaised);
-            // send back to user change wei
-            // finish the auction
-            // stage = Stage.FINISH;
-        // }else {
-            // 
-        // }
-        // amountRaised = amountRaised.add(amount);
-        // tokensForSale = tokensForSale.sub(amount);
-        // console.log("sender",msg.sender,"tokens",tokensForSale);
-        // bids.push(Bid(msg.sender, amount));
-        console.log("ERC20FractionToken: msg.sender",msg.sender,"msg.value",msg.value);
-        // auction.bid{value:msg.value}();
-        Offering(address(auction)).bid();
-        console.log("ERC20FractionToken: msg.value",msg.value);
-        
-    }
-
-    function endOffering() external virtual {
-    
-    }
-
-    function getPrice() external view returns(uint256) {
-        return auction.getPrice();
-    }
-
-    function getRemainderTokens() external view returns(uint256) {
-        return auction.getRemainderTokens();
-    }
-
-    function getAmountRaised() external view returns(uint256) {
-        return auction.getAmountRaised();
+    function bid() hasAuction virtual external payable hasAuction {      
+        console.log("ERC20FractionToken: msg.sender", msg.sender,"msg.value",msg.value);    
+        auction.bid{value:msg.value}(msg.sender);
     }
 
     function buyback() external {
@@ -104,18 +71,19 @@ contract ERC20FractionToken is ERC20, ERC721Holder {
         IERC721(nftAddress).transferFrom(address(this), msg.sender, id);   
     }
 
-    function moderatorTokens() private view returns(uint256) {
-        return balanceOf(moderatorNFT);
+    function endOffering() external virtual hasAuction {
+        auction.end();
     }
 
-    function validateSenderAndAmount(address bidder, uint256 amount ) private pure {
-        require(bidder != address(0), "bidder is the zero address");
-        // TODO bidder has not played
-        require(amount != 0, "weiAmount is 0");
-        // require(amountRaised.add(amount) <= maxCap, "tokensForSale exceededs");
+    function getPrice() external view hasAuction returns(uint256) {
+        return auction.getPrice();
     }
 
-    function auctionContract() external view returns(Auction) {
+    function getRemainderTokens() external view hasAuction returns(uint256) {
+        return auction.getRemainderTokens();
+    }
+
+    function auctionAddress() external view  hasAuction returns(Auction)  {
         return auction;
     }
 }

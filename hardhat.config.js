@@ -13,16 +13,9 @@ task("accounts", "Prints the list of accounts", async (taskArgs, hre) => {
   for (const account of accounts) {
     console.log(account.address);
     // console.log(account._signer);
-    console.log(Object.keys(account._signer));
+    // console.log(Object.keys(account._signer));
   }
 });
-
-// task("deploy-nft", "Deploys contract on a provided network")
-//   .addParam("privateKey", "Please provide the private key")
-//   .setAction(async ({privateKey}) => {
-//     const deployNFT = require("./scripts/deploy-nft.js");
-//     await deployNFT(privateKey);
-// });
 
 task("deploy-nft", "Deploys contract on a provided network",
   async (taskArgs, hre) => {

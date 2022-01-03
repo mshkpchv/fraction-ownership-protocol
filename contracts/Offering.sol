@@ -3,6 +3,7 @@ pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "hardhat/console.sol";
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 
 interface Offering {
 
@@ -14,7 +15,27 @@ interface Offering {
 
 }
 
-contract Auction is Offering {
+contract DutchAuction {
+
+    address[] private bidders;
+
+    // Bid[] public bids;
+
+    // getPrice
+    // bid()
+
+}
+
+contract FirstInAuction {
+
+}
+
+contract BaseAuction {
+   
+}
+
+contract Auction {
+    using SafeMath for uint256;
 
     struct Bid {
         address sender;
@@ -24,13 +45,10 @@ contract Auction is Offering {
     enum Stage {
         INACTIVE,
         ACTIVE,
-        FINISH,
-        BUYBACK
+        ACTIVE_NO_SUPPLY,
+        FINISH_TIME
     }
 
-    address[] private bidders;
-
-    Bid[] public bids;
 
     Stage public stage;
 
@@ -46,81 +64,101 @@ contract Auction is Offering {
     // 1 wei will give you 1 unit, or 0.001 TOK.
     uint256 private rate;
 
-    // Amount of wei raised
-    uint256 private weiRaised;
-
-    uint256 private weiCap;
-
     uint256 private tokensForSale;
 
     uint256 private totalSupply;
+    
+    // 
+    // auction length params 
+    //
+    uint256 public auctionStart;
+
+    uint256 public auctionEnd;
+
+    uint256 public auctionLength;
 
 
     constructor(uint256 _rate, address moderator ,address _token, uint256 _tokensForSale, uint256 _totalSupply) {
-        // rate = _rate;
-        rate = 1;
+        rate = _rate;
         token = IERC20(_token);
         wallet = moderator;
 
         tokensForSale = _tokensForSale;
         totalSupply = _totalSupply;
         
-        weiRaised = 0;
-        weiCap = _tokensForSale * _rate;
+        stage = Stage.INACTIVE;
+
+        auctionLength = 1 days;
+
     }
 
-    function start() override external {
-        require(stage == Stage.INACTIVE,"auction: can start single time");
+    function start() external {
+        require(stage == Stage.INACTIVE,"auction: inactive stage");
+        
+        auctionStart = block.timestamp;
+        auctionEnd = block.timestamp + auctionLength;
+
         stage = Stage.ACTIVE;
     }
 
-    function bid() external override payable {
+    function bid(address recipient) external payable {
         console.log("Offering.sol:offering bid",msg.sender);
-        uint256 amountInWei = msg.value;
-        address recipient = msg.sender;
-        uint256 tokens = _getTokenAmount(amountInWei);
-        // _preValidatePurchase(recipient, tokens);
+        require(stage == Stage.ACTIVE,"auction:active stage only");
+        require(block.timestamp < auctionEnd, "auction time ended");
 
-        // _processPurchase(recipient, tokens);
-        tokensForSale = tokensForSale - tokens;
-        token.transfer(recipient, tokens);
-        // token.transferFrom(address(this), msg.sender, tokens);
-        // _forwardFunds();
+        uint256 amountInWei = msg.value;
+        uint256 purchaseTokens = _getTokenAmount(amountInWei);
+
+        require(recipient != address(0), "auction: beneficiary is the zero address");
+        require(purchaseTokens != 0 ,"auction: tokens is not correct amount");
+
+        if (purchaseTokens > tokensForSale) {
+            purchaseTokens = tokensForSale;
+            _inAdvanceEnd();
+        }
+        tokensForSale = tokensForSale.sub(purchaseTokens);
+        token.transfer(recipient, purchaseTokens);
+        payable(wallet).transfer(msg.value);
+
+        //TODO emit
     }
 
-    function end() override external {
+    function end() external {
+        //TODO time is up and moderator must call it to get if tokens exists
+        require(stage == Stage.ACTIVE_NO_SUPPLY);
+        if (tokensForSale != 0 ) {
+            _processPurchase(wallet,tokensForSale);
+            tokensForSale = 0;
+        }
+    }
 
+    function _inAdvanceEnd() internal {
+        require(stage == Stage.ACTIVE,"auction:active stage");
+        stage = Stage.ACTIVE_NO_SUPPLY;
     }
 
     function getPrice() external view returns(uint256) {
         return 0;
     }
 
-    function getRate() external returns(uint256) {
-        return rate;
-    }
-
     function _getTokenAmount(uint256 weiAmount) internal view returns (uint256) {
-        return weiAmount * rate;
+        return weiAmount.mul(rate);
     }
 
     function getRemainderTokens() external view returns(uint256) {
         return tokensForSale;
     }
-
-    function getAmountRaised() external view returns(uint256) {
-        return weiRaised;
-    }
      
-    function _preValidatePurchase(address beneficiary, uint256 weiAmount) internal view {
-        require(beneficiary != address(0), "Crowdsale: beneficiary is the zero address");
-        require(weiAmount != 0, "Crowdsale: weiAmount is 0");
-        this; // silence state mutability warning without generating bytecode - see https://github.com/ethereum/solidity/issues/2691
+    function _preValidatePurchase(address beneficiary, uint256 tokens) internal view {
+        require(beneficiary != address(0), "auction: beneficiary is the zero address");
+        require(tokens != 0 ,"auction: tokens is not correct amount");
     }
-    function _processPurchase() internal view {
 
+    function _processPurchase(address recipient, uint256 tokens) internal {
+        token.transfer(recipient, tokens);
     }
-    function _forwardFunds() internal view {
-        // token.transfer(recipient, tokenCount);
+
+    function _forwardFunds() internal {
+        payable(wallet).transfer(msg.value);
     }
 }

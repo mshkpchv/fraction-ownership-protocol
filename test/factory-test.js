@@ -1,27 +1,28 @@
 const hre  = require("hardhat");
 const ethers = hre.ethers;
 const { expect } = require("chai");
-const utils = require("../scripts/utils.js");
+const init_utils = require("../scripts/utils.js");
+const utils =init_utils();
 
 describe("ERC20FractionTokenFactory", function () {
   let FRACTION_CONTRACT = null;
   let NFTContract = null;
-  let wallet = null;
+  let mainWallet = null;
   let mintNFTnumber = 1;
   let tokenIds = null;
 
   let ERC20FractionTokenObj = null;
 
   before(async function(){
-    wallet = await ethers.getSigner()
+    // mainWallet = await ethers.getSigner()
+    mainWallet = utils.createRandomWallet(true);
 
     let ipfs_uri = `${process.env.IPFS_NFT_URI}` 
-
     let nft_uris = Array(mintNFTnumber).fill(ipfs_uri);
-    const [contract,ids ] = await utils.deployAndMintNFT(wallet,nft_uris);
+    const [contract,ids ] = await utils.deployAndMintNFT(mainWallet,nft_uris);
     NFTContract = contract;
     tokenIds = ids;
-    const fractionFactory = await ethers.getContractFactory("ERC20FractionTokenFactory", wallet);
+    const fractionFactory = await ethers.getContractFactory("ERC20FractionTokenFactory", mainWallet);
     FRACTION_CONTRACT = await fractionFactory.deploy();
     await FRACTION_CONTRACT.deployed();
 
@@ -29,13 +30,13 @@ describe("ERC20FractionTokenFactory", function () {
 
   it("deployment should be finished and correct",async function(){
     expect(NFTContract).not.be.equal(null)
-    expect(wallet).not.be.equal(null)
+    expect(mainWallet).not.be.equal(null)
     expect(FRACTION_CONTRACT).not.be.equal(null)
     expect(tokenIds).not.be.equal(null) 
   })
 
   it("should NFTs minted succcessfully for main wallet", async function(){
-    let address = await wallet.getAddress()
+    let address = await mainWallet.getAddress()
     let tokens = await NFTContract.balanceOf(address);
     expect(tokens).to.be.equal(mintNFTnumber);
 
@@ -61,7 +62,7 @@ describe("ERC20FractionTokenFactory", function () {
   it("show the owner of the tokens", async function() {
     let token = tokenIds[0]
     let result = await NFTContract.ownerOf(token);
-    let addr = await wallet.getAddress();
+    let addr = await mainWallet.getAddress();
     expect(result).to.be.equal(addr)
   });
 
@@ -70,7 +71,7 @@ describe("ERC20FractionTokenFactory", function () {
     let name = "MishoToken";
     let symbol = "MSH";
     let contractInfo = await utils.doFractionNFT(
-      wallet,
+      mainWallet,
       FRACTION_CONTRACT,
       NFTContract,
       token,
@@ -79,7 +80,7 @@ describe("ERC20FractionTokenFactory", function () {
     );
     ERC20FractionTokenObj = contractInfo;
 
-    let address = await wallet.getAddress();
+    let address = await mainWallet.getAddress();
     let tokens = await NFTContract.balanceOf(address);
     expect(tokens).to.be.equal(mintNFTnumber - 1);
   })
