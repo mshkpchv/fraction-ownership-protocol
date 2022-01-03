@@ -34,36 +34,9 @@ contract ERC20FractionToken is ERC20, ERC721Holder {
 
     address immutable private moderatorNFT;
 
-    // offering variables
+    Auction private auction;
 
-    // @dev price per Token
-    uint256 private pricePerToken;
-    
-    // @dev price per Token, zero if there are not offering
-    uint256 private tokensForSale;
-
-    // @dev the max tokens(in wei) for offering 
-    uint256 private maxCap;
-
-    //@dev amount of wei raised, after offering must go to NFT moderator
-    uint256 private amountRaised;
-
-    Stage public stage;
-
-    // offering length variables
-
-    uint256 public offeringEnd;
-
-    uint256 private offeringLength;
-        
-    uint256 private offeringStart;
-
-    struct Bid {
-        address sender;
-        uint256 amount;
-    }
-    address[] private bidders; 
-    Bid[] public bids;
+    bool private hasAuction;
 
 
     constructor(string memory _tokenName, string memory _tokenSymbol, address _tokenContractAddress, address _moderatorNFT, uint256 _tokenId, uint256 _tokenSupply) ERC20(_tokenName,_tokenSymbol) {
@@ -71,72 +44,63 @@ contract ERC20FractionToken is ERC20, ERC721Holder {
        id = _tokenId;
        moderatorNFT = _moderatorNFT;
        _mint(_moderatorNFT,_tokenSupply);
-       stage = Stage.NEW;
+       hasAuction = false;
     }
 
     function startOffering(uint256 _pricePerToken, uint256 _tokensForSale ) external virtual {
-        require(stage == Stage.NEW,"offering: can start single time");
-        require(msg.sender == moderatorNFT,"nft moderator can start offering");
+        require(msg.sender == moderatorNFT," nft moderator can start soffering");
         require(_tokensForSale < moderatorTokens(),"offering: moderator tokens > offering token");
-        
-        offeringEnd = block.timestamp + offeringLength;
-
-        pricePerToken = _pricePerToken;
-        tokensForSale = _tokensForSale;
-        maxCap = _tokensForSale;
-        // transfer this token to the contact itself for security reasons
-        transfer(address(this), tokensForSale);
-
-        stage = Stage.ACTIVE;
+        auction = new Auction(1, moderatorNFT, address(this), _tokensForSale, totalSupply());
+        approve(address(auction), _tokensForSale);
+        transfer(address(auction), _tokensForSale);
+        console.log("ERC20FractionToken auction auction",address(auction));
+        hasAuction = true;
     }
 
     function bid() virtual external payable {
-        require(stage == Stage.ACTIVE,"offering: allowed only in Active state");
-        uint256 amount = msg.value;
-        validateSenderAndAmount(msg.sender, amount);
-        require(block.timestamp < offeringEnd, "offering: offeringended");
+        // validateSenderAndAmount(msg.sender, amount);
+        // require(block.timestamp < offeringEnd, "offering: offeringended");
         
-        if(amountRaised.add(amount) <= maxCap ){
-            uint256 change = maxCap.sub(amountRaised);
+        // if(amountRaised.add(amount) <= maxCap ){
+            // uint256 change = maxCap.sub(amountRaised);
             // send back to user change wei
             // finish the auction
             // stage = Stage.FINISH;
-        }else {
+        // }else {
             // 
-        }
-        amountRaised = amountRaised.add(amount);
-        tokensForSale = tokensForSale.sub(amount);
+        // }
+        // amountRaised = amountRaised.add(amount);
+        // tokensForSale = tokensForSale.sub(amount);
         // console.log("sender",msg.sender,"tokens",tokensForSale);
-        bids.push(Bid(msg.sender, amount));
-
-        //TODO finish the sale if capacity is max
+        // bids.push(Bid(msg.sender, amount));
+        console.log("ERC20FractionToken: msg.sender",msg.sender,"msg.value",msg.value);
+        // auction.bid{value:msg.value}();
+        Offering(address(auction)).bid();
+        console.log("ERC20FractionToken: msg.value",msg.value);
+        
     }
 
     function endOffering() external virtual {
-        require(stage == Stage.ACTIVE,"offering: allowed only in Active state");
-        require(block.timestamp >= offeringEnd, "end:auction live");
-        stage = Stage.FINISH;
-
-        distributeTokensAndEthers();
+    
     }
 
     function getPrice() external view returns(uint256) {
-        return pricePerToken;
+        return auction.getPrice();
     }
 
     function getRemainderTokens() external view returns(uint256) {
-        return tokensForSale;
+        return auction.getRemainderTokens();
     }
 
     function getAmountRaised() external view returns(uint256) {
-        return amountRaised;
+        return auction.getAmountRaised();
     }
 
     function buyback() external {
-        // todo 100 % owner of the tokens
-        require(msg.sender == moderatorNFT,"msg.sender must be moderator");
+        // must have 100% of the tokens
+        uint256 supply = totalSupply();
+        require(balanceOf(msg.sender) == supply,"msg.sender must have all tokens");        
         _burn(msg.sender,totalSupply());
-        // transfer back the nft to the owner
         IERC721(nftAddress).transferFrom(address(this), msg.sender, id);   
     }
 
@@ -151,7 +115,7 @@ contract ERC20FractionToken is ERC20, ERC721Holder {
         // require(amountRaised.add(amount) <= maxCap, "tokensForSale exceededs");
     }
 
-    function distributeTokensAndEthers() internal {
-        
+    function auctionContract() external view returns(Auction) {
+        return auction;
     }
 }

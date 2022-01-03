@@ -1,7 +1,7 @@
 const hre  = require("hardhat");
 const ethers = hre.ethers;
 const { expect } = require("chai");
-const utils = require("./test-contracts/utils.js");
+const utils = require("../scripts/utils.js");
 
 describe("ERC20FractionTokenFactory", function () {
   let FRACTION_CONTRACT = null;
@@ -14,8 +14,11 @@ describe("ERC20FractionTokenFactory", function () {
 
   before(async function(){
     wallet = await ethers.getSigner()
-  
-    const [contract,ids ] = await utils.deployAndMintNFT(wallet,mintNFTnumber);
+
+    let ipfs_uri = `${process.env.IPFS_NFT_URI}` 
+
+    let nft_uris = Array(mintNFTnumber).fill(ipfs_uri);
+    const [contract,ids ] = await utils.deployAndMintNFT(wallet,nft_uris);
     NFTContract = contract;
     tokenIds = ids;
     const fractionFactory = await ethers.getContractFactory("ERC20FractionTokenFactory", wallet);

@@ -17,6 +17,18 @@ task("accounts", "Prints the list of accounts", async (taskArgs, hre) => {
   }
 });
 
+// task("deploy-nft", "Deploys contract on a provided network")
+//   .addParam("privateKey", "Please provide the private key")
+//   .setAction(async ({privateKey}) => {
+//     const deployNFT = require("./scripts/deploy-nft.js");
+//     await deployNFT(privateKey);
+// });
+
+task("deploy-nft", "Deploys contract on a provided network",
+  async (taskArgs, hre) => {
+    const deployNFT = require("./scripts/deploy-nft.js");
+    await deployNFT();
+});
 // You need to export an object to set up your config
 // Go to https://hardhat.org/config/ to learn more
 
@@ -28,6 +40,11 @@ module.exports = {
   networks: {
     ropsten: {
       url: process.env.ROPSTEN_URL || "",
+      accounts:
+        process.env.PRIVATE_KEY !== undefined ? [process.env.PRIVATE_KEY] : [],
+    },
+    rinkeby: {
+      url: process.env.RINKEBY_URL, //Infura url with projectId
       accounts:
         process.env.PRIVATE_KEY !== undefined ? [process.env.PRIVATE_KEY] : [],
     },

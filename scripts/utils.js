@@ -7,19 +7,19 @@ const PKS = [
     "0xdf57089febbacf7ba0bc227dafbffa9fc08a93fdc68e1e42411a14efcf23656e",
 ]
 
-async function deployNFTAndMintTokens(wallet, autonumber=2) {
-
+async function deployNFTAndMintTokens(wallet, nftUris=[]) {
     const LimeNFTFactory = await ethers.getContractFactory("LimeNFT", wallet);
     const contract = await LimeNFTFactory.deploy();
     await contract.deployed();
-    let addr = await wallet.getAddress();
 
-    addresses = Array(autonumber).fill(addr);
+    let walletAddress = await wallet.getAddress();
+    let nftCount = nftUris.length;
 
-    for (let address of addresses){
-        let mintNFTTxRequest = await contract.mintNFT(address,"localhost");
+    for(let i = 0; i < nftCount; i++){
+        let mintNFTTxRequest = await contract.mintNFT(walletAddress,nftUris[i]);
         await mintNFTTxRequest.wait()
     }
+
     let abi = ['event Transfer(address indexed from, address indexed to, uint256 indexed tokenId)']
     let iface = new ethers.utils.Interface(abi);       
     let eventFilter = contract.filters.Transfer();
@@ -34,15 +34,15 @@ async function deployNFTAndMintTokens(wallet, autonumber=2) {
     return [contract , tokenIds]
 }
 
-async function doFractionNFT(wallet, FRACTION_CONTRACT, NFTContract, token, newTokenName, newTokenSymbol,supply=100) {
+async function doFractionNFT(wallet, fractionFactoryContract, NFTContract, token, newTokenName, newTokenSymbol,supply=100) {
     
     let nftContractAddress = NFTContract.address;
 
     // approave fraction contract to operate over nft contract
-    let approveTx = await NFTContract.approve(FRACTION_CONTRACT.address,token);
+    let approveTx = await NFTContract.approve(fractionFactoryContract.address,token);
     await approveTx.wait();
 
-    const fractionContract = FRACTION_CONTRACT.connect(wallet);
+    const fractionContract = fractionFactoryContract.connect(wallet);
     let tx = await fractionContract.create(
         newTokenName,
         newTokenSymbol,
@@ -58,12 +58,17 @@ async function doFractionNFT(wallet, FRACTION_CONTRACT, NFTContract, token, newT
 
     let abi = ['event FractionEvent(address tokenContractAddress, uint256 tokenId,address fractionContractAddress, uint256 fractionIndex)']
     let iface = new ethers.utils.Interface(abi);
-    let contract = FRACTION_CONTRACT.connect(wallet);        
+    let contract = fractionFactoryContract.connect(wallet);        
     let eventFilter = contract.filters.FractionEvent();
     let events = await contract.queryFilter(eventFilter);
 
     events = events.map((ev)=> iface.parseLog(ev));    
-    single = events[0];
+    events = events.filter(function(ev){
+        let {tokenId} = ev.args;
+        return tokenId == token
+    })
+    let single = events[0];
+    
     const {tokenContractAddress,tokenId,fractionContractAddress,fractionIndex} = single.args;
     
     return {

@@ -7,7 +7,7 @@ import "@openzeppelin/contracts/utils/Counters.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 
-contract LimeNFT is ERC721, Ownable {
+contract LimeNFT is ERC721URIStorage, Ownable {
     using Counters for Counters.Counter;
     Counters.Counter private _tokenIds;
 
@@ -21,11 +21,8 @@ contract LimeNFT is ERC721, Ownable {
 
         uint256 newItemId = _tokenIds.current();
         _mint(recipient, newItemId);
-        // _setTokenURI(newItemId, tokenURI);
+        _setTokenURI(newItemId, tokenURI);
 
         return newItemId;
-    }
-    function _setTokenURI(uint256 newItemId, string memory tokenURI) private view {
-
     }
 }
