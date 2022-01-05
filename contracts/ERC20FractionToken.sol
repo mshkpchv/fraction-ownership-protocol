@@ -49,7 +49,7 @@ contract ERC20FractionToken is ERC20, ERC721Holder {
         require(msg.sender == moderatorNFT," nft moderator can start soffering");
         require(_tokensForSale < balanceOf(moderatorNFT),"offering: moderator tokens > offering token");
         require(address(auction) == address(0),"auction:started only one time");
-        require(_rate >= 1,"auction:rate >= 1");
+        require(_rate > 0,"auction:rate >= 0");
 
         auction = new Auction(_rate, moderatorNFT, address(this), _tokensForSale, totalSupply());
         // approve(address(auction), _tokensForSale);
