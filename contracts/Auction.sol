@@ -8,26 +8,24 @@ import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 
 interface IAuction {
 
-    function start() external ;
+    function start(uint256 _tokensForSale) external ;
 
     function bid(address recipient) external payable;
 
     function end() external;
 
-    function getPrice() external returns(uint256);
-
-    function getPricePerWei() external returns(uint256);
+    function getPrice() external view returns(uint256);
 
     function getRemainderTokens() external view returns(uint256);
 
-    // function getName() external pure returns(string memory);
-
 }
 
-contract BaseAuction {
+abstract contract BaseAuction is IAuction {
     using SafeMath for uint256;
 
     uint256 internal constant WEI = 10**18;
+
+    uint256 internal constant MIN_AUCTION_LENGTH = 10 seconds;
 
     enum Stage {
         INACTIVE,
@@ -53,8 +51,6 @@ contract BaseAuction {
 
     uint256 internal tokensForSale;
 
-    uint256 internal totalSupply;
-    
     // 
     // auction length params 
     //
@@ -62,7 +58,7 @@ contract BaseAuction {
 
     uint256 public auctionEnd;
 
-    uint256 public auctionLength = 1 days;
+    uint256 public auctionLength;
 
 
     event Start(address buyer, uint256 tokensForSale);
@@ -72,73 +68,85 @@ contract BaseAuction {
     event End();
 
 
-    constructor(uint256 _rate, address moderator ,address _token, uint256 _tokensForSale, uint256 _totalSupply) {
+    constructor(uint256 _rate, address moderator ,address _token , uint256 _auctionLength) {
         rate = _rate;
         token = IERC20(_token);
         wallet = moderator;
 
-        tokensForSale = _tokensForSale;
-        totalSupply = _totalSupply;
-        
+        if (_auctionLength < MIN_AUCTION_LENGTH ){
+            _auctionLength = MIN_AUCTION_LENGTH;
+        }
+        auctionLength = _auctionLength;
         stage = Stage.INACTIVE;
     }
 
-    function start() virtual external {
+    function start(uint256 _tokensForSale) virtual external override {
         require(stage == Stage.INACTIVE,"auction: inactive stage");
         
         auctionStart = block.timestamp;
         auctionEnd = block.timestamp + auctionLength;
+        tokensForSale = _tokensForSale;
 
         stage = Stage.ACTIVE;
+
+        _startAuction();
+
     }
 
-    function bid(address recipient) external payable {
+    function bid(address recipient) external payable override {
         require(stage == Stage.ACTIVE,"auction:active stage only");
-        require(block.timestamp < auctionEnd, "auction time ended");
+        require(block.timestamp < auctionEnd, "auction: time ended");
+        
+        bool successUpdateState =  _tryUpdateStateBeforePurchase();
+        require(successUpdateState,"auction: tokens sold out");
+        // state cannot be changed, beucase of out of supply or something 
 
         uint256 amountInWei = msg.value;
         uint256 purchaseTokens = _calcTokenAmount(amountInWei);
 
         _preValidatePurchase(recipient, purchaseTokens);
-        
-        _updateState();
-
-        if (purchaseTokens > tokensForSale || block.timestamp > auctionEnd) {
+    
+        if (purchaseTokens > tokensForSale) {
             purchaseTokens = tokensForSale;
-            _inAdvanceEnd();
+            // _inAdvanceEnd();
         }
-        _updatePurchase(recipient, purchaseTokens,amountInWei);
+        _updatePurchase(recipient, purchaseTokens, amountInWei);
 
         _forwardFunds();
 
         emit Bid(recipient, purchaseTokens, amountInWei);
     }
 
-    function end() virtual external {
+    function end() virtual external override {
         //TODO time is up and moderator must call it to get if tokens exists
-        require(stage == Stage.ACTIVE_NO_SUPPLY || block.timestamp > auctionEnd);
+        require(stage == Stage.ACTIVE || stage == Stage.ACTIVE_NO_SUPPLY);
+        // require(block.timestamp > auctionEnd,"auction:not finished yet");
+
         _endAuction();
         stage = Stage.FINISHED;
+
+        emit End();
     }
 
-    function _inAdvanceEnd() internal virtual {
-        require(stage == Stage.ACTIVE,"auction:active stage");
-        stage = Stage.ACTIVE_NO_SUPPLY;
+    function _inAdvanceEnd() internal virtual {   
+        // require(stage == Stage.ACTIVE,"auction:active stage");
+        // stage = Stage.ACTIVE_NO_SUPPLY;
     }
 
-    function getPrice() virtual external view returns(uint256) {
+    function getPrice() virtual external view override returns(uint256) {
         return WEI.div(rate);
     }
 
-    function _calcTokenAmount(uint256 weiAmount) virtual internal view returns (uint256) {
+    function _calcTokenAmount(uint256 weiAmount) virtual internal view  returns (uint256) {
         return rate.mul(weiAmount);
     }
 
-    function getRemainderTokens() external view returns(uint256) {
+    function getRemainderTokens() virtual external view override returns(uint256) {
         return tokensForSale;
     }
      
     function _preValidatePurchase(address recipient, uint256 tokens) internal virtual view {
+        require(tokensForSale > 0,"auction: tokens sold out");
         require(recipient != address(0), "auction: beneficiary is the zero address");
         require(tokens != 0 ,"auction: tokens is not correct amount");
     }
@@ -155,38 +163,37 @@ contract BaseAuction {
         //overrdide
     }
     
-    function _updateState() internal virtual {
-        // override if needed
+    function _tryUpdateStateBeforePurchase() internal virtual returns(bool) {
+        return true;
     }
 
     function _endAuction() internal virtual {
         // override if needed
     }
-}
 
-contract Auction is BaseAuction {
+    function _startAuction() internal virtual {
+        // override if needed
+    }
+
+
+}
+// first in first out auction
+contract FIFOAuction is BaseAuction {
     using SafeMath for uint256;
 
-    constructor(uint256 _rate, address moderator ,address _token, uint256 _tokensForSale, uint256 _totalSupply)
-        BaseAuction(_rate,moderator,_token,_tokensForSale,_totalSupply) {
+    constructor(uint256 _rate, address moderator ,address _token, uint256 _auctionLength)
+        BaseAuction(_rate, moderator, _token, _auctionLength) {
     }
 
-    function _inAdvanceEnd() internal override {
-        require(stage == Stage.ACTIVE,"auction:active stage");
-        stage = Stage.ACTIVE_NO_SUPPLY;
-    }
-
-    
     function _calcTokenAmount(uint256 weiAmount) override internal view returns (uint256) {
         return rate.mul(weiAmount);
     }
-     
-
+    
     function _processPurchase(address recipient, uint256 tokens) internal override {
         token.transfer(recipient, tokens);
     }
 
-    function _updatePurchase(address recipient, uint256 tokens,uint256 amountInWei) internal override virtual {
+    function _updatePurchase(address recipient, uint256 tokens, uint256 amountInWei) internal override virtual {
         tokensForSale = tokensForSale.sub(tokens);
         token.transfer(recipient, tokens);
     }
@@ -195,8 +202,9 @@ contract Auction is BaseAuction {
         payable(wallet).transfer(msg.value);
     }
     
-    function _updateState() override internal virtual  {
+    function _tryUpdateStateBeforePurchase() override internal virtual returns(bool)  {
         // override if needed
+        return true;
     }
 
     function _endAuction() override virtual internal {
@@ -207,10 +215,14 @@ contract Auction is BaseAuction {
     }
 }
 
-contract DutchAuction is Auction {
+contract DutchAuction is FIFOAuction {
     using SafeMath for uint256;
 
     uint256 private maxReserveRate;
+    uint256 private finalRateForDistribution;
+
+    uint256 private amountInWeiRaised;
+    uint256 private allTokensForSale;
 
     // bid balances WEI
     mapping(address => uint256) private _balancesWEI;
@@ -220,21 +232,30 @@ contract DutchAuction is Auction {
     address[] private participantsAddresses;
     
 
-    constructor(uint256 _rate, uint256 _maxRate, address moderator ,address _token, uint256 _tokensForSale) Auction(_rate,  moderator , _token,  _tokensForSale,0) {
+    constructor(uint256 _rate, uint256 _maxRate, address moderator ,address _token,uint256 _auctionLength) FIFOAuction(_rate,  moderator , _token, _auctionLength) {
             require(_rate < _maxRate,"the price cannot go up max rate");
             maxReserveRate = _maxRate;
+            finalRateForDistribution = _rate;
+
+    }
+
+    function _startAuction() internal virtual override {
+        allTokensForSale = tokensForSale;
     }
 
     // distrbute the tokens to their holder
     function _endAuction() virtual internal override {
         
-        uint256 finalRate = 0;
         // distribute the tokens and
+        console.log("finalRateForDistribution",finalRateForDistribution);
 
         for(uint i = 0; i < participantsAddresses.length; i++) {
             address current = participantsAddresses[i];
             uint256 amountInWei = _balancesWEI[current];
-            uint256 purchaseTokens = finalRate.mul(amountInWei);
+
+            uint256 purchaseTokens = finalRateForDistribution.mul(amountInWei);
+            console.log("current",current,amountInWei,purchaseTokens);
+
             token.transfer(current, purchaseTokens);
             payable(wallet).transfer(amountInWei);
         }
@@ -242,34 +263,30 @@ contract DutchAuction is Auction {
     }
 
     function getPrice() virtual override external view returns(uint256) {
-        return _calcRateAddition();
+        return WEI.div(_calcRateAddition());
     }
 
-    // translate block.timestamp in [auctionStart;auctionEnd] to [1,10] 
-    function _calcRateAddition() view internal returns(uint256) {
-        uint256 current = block.timestamp;
-        return _remapRange(current,auctionStart,auctionEnd,rate,maxReserveRate);
-    }
-    
-    function _remapRange(uint256 x, uint256 a, uint256 b,uint256 c,uint256 d) internal pure returns(uint256) {
-        uint256 XdivA = x.div(a);
-        uint256 DdivC = d.sub(c);
-        uint256 BsubA = b.sub(a);
-        uint256 first = XdivA.mul(DdivC);
-        first = first.div(BsubA);
-        return first.add(c);
-    }
-
-    function _updateState() override internal {
-        rate = _calcRateAddition();
+    function _tryUpdateStateBeforePurchase() override internal returns(bool) {
+        uint256 currentRate = _calcRateAddition();
+        uint256 remainderTokens = _calcRemainderTokens(currentRate);
+        if(remainderTokens < 0) {
+            return false;
+        }
+        rate = currentRate;
+        finalRateForDistribution = currentRate;
+        tokensForSale = remainderTokens;
+        return true;
     }
     
     function _updatePurchase(address recipient, uint256 tokens, uint256 amountInWei) override internal {
         _balancesWEI[recipient] = _balancesWEI[recipient].add(amountInWei);
         participantsAddresses.push(recipient);
+        tokensForSale = tokensForSale - tokens;
+        amountInWeiRaised = amountInWeiRaised.add(amountInWei);
         participants[recipient] = true;
     }
 
+    // TODO check if rate > from everything
     function _preValidatePurchase(address recipient, uint256 tokens) internal override view {
         require(!participants[recipient], "auction:only one purchase per address");
         super._preValidatePurchase(recipient,tokens);
@@ -279,5 +296,39 @@ contract DutchAuction is Auction {
         // we do not forward tokens before token sale ends
     }
 
+    function getRemainderTokens() override external view returns(uint256) {
+        return _calcRemainderTokens();
+    }
+    
+    function _calcRemainderTokens() internal view returns(uint256) {
+        return _calcRemainderTokens(rate);
+    }
+
+    function _calcRemainderTokens(uint256 _rate) internal view returns(uint256) {
+        console.log("all", allTokensForSale, amountInWeiRaised, rate);
+        uint256 temp = _rate.mul(amountInWeiRaised);
+        if (allTokensForSale >= temp){
+            return allTokensForSale.sub(temp);
+        }
+        return 0;
+    }
+
+    // translate block.timestamp in [auctionStart;auctionEnd] to [1,10] 
+    function _calcRateAddition() view internal returns(uint256) {
+        uint256 currentTimestamp = block.timestamp;
+        uint256 newRate = _remapRange(currentTimestamp,auctionStart,auctionEnd,rate,maxReserveRate);
+        console.log("remap",currentTimestamp, auctionStart,auctionEnd);
+        console.log("remap",newRate, rate, maxReserveRate);
+        return newRate;
+    }
+    
+    function _remapRange(uint256 x, uint256 a, uint256 b, uint256 c, uint256 d) internal pure returns(uint256) {
+        uint256 XdivA = x.div(a);
+        uint256 DdivC = d.sub(c);
+        uint256 BsubA = b.sub(a);
+        uint256 first = XdivA.mul(DdivC);
+        first = first.div(BsubA);
+        return first.add(c);
+    }
 
 }

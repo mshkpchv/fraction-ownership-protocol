@@ -5,29 +5,37 @@ const init_utils = require("../scripts/utils.js");
 const utils =init_utils();
  
 describe("ERC20FractionToken", function () {
-  let FRACTION_CONTRACT_FACTORY = null;
+
+  // nft vars
   let NFTContract = null;
   let firstNftContractTokenId = null;
   let secondNftContractTokenId = null;
-  let mainWallet = null;
-  let mintNFTnumber = 2;
+  let thirdNFtContractTokenId = null;
+  const MINT_NFT_COUNT = 3;
 
+  let mainWallet = null;
+  let FRACTION_CONTRACT_FACTORY = null;
+  
   let ERC20FractionTokenObj = null;
   let ERC20FractionTokenObjSecond = null;
+  let ERC20FractionTokenObjThird = null;
+  
 
   let erc20abi = null;
   let fractionabi = null;
+  let auctionabi = null;
 
-  let tokenName = "Misho";
-  let tokenSymbol = "MSH";
-  let totalSupply = 5000;
-  let TOKENS_FOR_SALE = null;
+  const TOKEN_NAME = "Misho";
+  const TOKEN_SYMBOL = "MSH";
+  const TOTAL_SUPPLY = 5000;
+  const TOKENS_FOR_SALE = 1000;
 
+  const AUCTION_LENGTH_SECONDS = 24 * 60 * 60;
 
   before(async function(){
     // wallet = await ethers.getSigner() 
     let ipfs_uri = `${process.env.IPFS_NFT_URI}`
-    let nft_uris = Array(mintNFTnumber).fill(ipfs_uri);
+    let nft_uris = Array(MINT_NFT_COUNT).fill(ipfs_uri);
 
     mainWallet = utils.createRandomWallet() 
     const [contract,ids ] = await utils.deployAndMintNFT(mainWallet,nft_uris);
@@ -35,6 +43,7 @@ describe("ERC20FractionToken", function () {
     tokenIds = ids;
     firstNftContractTokenId = tokenIds[0];
     secondNftContractTokenId = tokenIds[1];
+    thirdNFtContractTokenId = tokenIds[2];
 
     
     const fractionFactory = await ethers.getContractFactory("ERC20FractionTokenFactory", mainWallet);
@@ -44,12 +53,16 @@ describe("ERC20FractionToken", function () {
     // first erc20fractioncontract
     
     ERC20FractionTokenObj = await utils.doFractionNFT(mainWallet,FRACTION_CONTRACT_FACTORY,
-        NFTContract,firstNftContractTokenId,tokenName,tokenSymbol,totalSupply);
+        NFTContract,firstNftContractTokenId,TOKEN_NAME,TOKEN_SYMBOL,TOTAL_SUPPLY);
 
-    // second erc20fractioncontract
+    // second erc20fractionContract
 
     ERC20FractionTokenObjSecond = await utils.doFractionNFT(mainWallet,FRACTION_CONTRACT_FACTORY,
-      NFTContract,secondNftContractTokenId,tokenName,tokenSymbol,totalSupply);
+      NFTContract,secondNftContractTokenId,TOKEN_NAME,TOKEN_SYMBOL,TOTAL_SUPPLY);
+
+    // third erc20fractionContract
+    ERC20FractionTokenObjThird = await utils.doFractionNFT(mainWallet,FRACTION_CONTRACT_FACTORY,
+      NFTContract,thirdNFtContractTokenId,TOKEN_NAME,TOKEN_SYMBOL,TOTAL_SUPPLY);
 
     erc20abi = [
         // Read-Only Functions
@@ -68,12 +81,14 @@ describe("ERC20FractionToken", function () {
 
     fractionabi = erc20abi.concat([
         "function buyback()",
-        "function startOffering(uint256 pricePerToken, uint256 tokenCount)",
         "function stage() view returns (uint256)",
         "function bid() payable",
         "function getRemainderTokens() view returns(uint256)",
         "function getAmountRaised() view returns(uint256)",
-        "function auctionAddress() view returns(address)"
+        "function auctionAddress() view returns(address)",
+
+        // "function startOffering(uint256 pricePerToken, uint256 tokenCount)",
+        "function startOffering(address auction, uint256 tokens)"
 
     ]);
 
@@ -85,9 +100,9 @@ describe("ERC20FractionToken", function () {
 
     //before the buyback the wallet is not owner of the NFT with id 'nftContractTokenId'
     let walletAddress = await mainWallet.getAddress();
-    let result = await NFTContract.ownerOf(secondNftContractTokenId);
-    expect(result).not.be.equal(walletAddress);
-    expect(result).to.be.equal(contract.address);
+    let owner = await NFTContract.ownerOf(secondNftContractTokenId);
+    expect(owner).not.be.equal(walletAddress);
+    expect(owner).to.be.equal(contract.address);
 
     // buyback the nft with mainWallet
     await contract.buyback();
@@ -105,8 +120,8 @@ describe("ERC20FractionToken", function () {
     
     const fractionContract = new ethers.Contract(ERC20FractionTokenObj.fractionContractAddress,erc20abi,mainWallet);
     
-    expect(await fractionContract.symbol()).to.be.equal(tokenSymbol);
-    expect(await fractionContract.name()).to.be.equal(tokenName);
+    expect(await fractionContract.symbol()).to.be.equal(TOKEN_SYMBOL);
+    expect(await fractionContract.name()).to.be.equal(TOKEN_NAME);
     expect(await fractionContract.decimals()).to.be.equal(18);
 
     let walletAddress = await mainWallet.getAddress();
@@ -134,31 +149,50 @@ describe("ERC20FractionToken", function () {
     
   });
 
-  
-  it("should start offering for the tokens", async function(){
-    let walletAddress = await mainWallet.getAddress();
+  it("should NOT random auction contract can auction tokens", async function(){
+    
+    let randomWallet = utils.createRandomWallet(true);
+    let address = await randomWallet.getAddress();
+
+    const auctionFactory = await ethers.getContractFactory("FIFOAuction", randomWallet);
+
+    let auctionContract = await auctionFactory.deploy(1 ,address,ERC20FractionTokenObj.fractionContractAddress,AUCTION_LENGTH_SECONDS);
+    await auctionContract.deployed();
+    console.log("auction contract address ",auctionContract.address);
+    await auctionContract.start(TOKENS_FOR_SALE);
+
+    const options = { value:ethers.utils.parseEther("0.0000000000000001") }
+    const params = address
+
+	  expect(auctionContract.bid(params,options)).to.be.revertedWith("ERC20: transfer amount exceeds balance")
+    // uint256 _rate, address moderator ,address _token, uint256 _tokensForSale, uint256 _totalSupply
+    
+  });
+
+  it("should start offering for the tokens with Simple FIFO Auction", async function(){
+    let mainWalletAddress = await mainWallet.getAddress();
     const fractionContract = new ethers.Contract(ERC20FractionTokenObj.fractionContractAddress, fractionabi, mainWallet);
     
-    let fractionTokens = await fractionContract.balanceOf(walletAddress);
+    let fractionTokens = await fractionContract.balanceOf(mainWalletAddress);
+
+    const auctionFactory = await ethers.getContractFactory("FIFOAuction", mainWallet);
+    console.log("TOKENS_FOR_SALE",TOKENS_FOR_SALE)
+    console.log("totalSupply",TOTAL_SUPPLY)
+
+    let auctionContract = await auctionFactory.deploy(1, mainWalletAddress, ERC20FractionTokenObj.fractionContractAddress, AUCTION_LENGTH_SECONDS);
 
     let tokensForSale = 1000;
-    let rate = 1;
     let tx = await fractionContract.startOffering(
-        rate,
+        auctionContract.address,
         tokensForSale
     );
     
     await tx.wait()
-    
-    let auctionAddress = await fractionContract.auctionAddress()
+    // let auctionAddress = await fractionContract.auctionAddress()
 
-    expect(await fractionContract.balanceOf(auctionAddress)).to.be.equal(tokensForSale);
-    // the moderator must have reduce himself the tokens for the offering
-    expect(await fractionContract.balanceOf(walletAddress)).to.be.equal(fractionTokens - tokensForSale);
-    
-    // expect(await fractionContract.stage()).to.be.equal(1);
-
-    TOKENS_FOR_SALE = tokensForSale
+    // expect(await fractionContract.balanceOf(auctionAddress)).to.be.equal(tokensForSale);
+    // // the moderator must have reduce himself the tokens for the offering
+    // expect(await fractionContract.balanceOf(walletAddress)).to.be.equal(fractionTokens - tokensForSale);    
   });
 
   it("should be the FIRST bid for tokens", async function(){
@@ -196,7 +230,7 @@ describe("ERC20FractionToken", function () {
     const fractionContract = new ethers.Contract(ERC20FractionTokenObj.fractionContractAddress,fractionabi,mainWallet);
     let beforeTokens = await fractionContract.getRemainderTokens();
 
-    let concurentFunction = async function (randomWallet, wei) {
+    let singleBid = async function (randomWallet, wei) {
 
       const contract = fractionContract.connect(randomWallet);
       let tx = await contract.bid({value:wei});
@@ -205,7 +239,7 @@ describe("ERC20FractionToken", function () {
     const wei = ethers.utils.parseEther("0.0000000000000001"); // 100 wei
     let howMany = 2;
     let walletArray = utils.createRandomWallets(howMany);
-    let promises = walletArray.map((_wlt) => concurentFunction(_wlt,wei))
+    let promises = walletArray.map((_wlt) => singleBid(_wlt,wei))
     
 
     let combinedPromise = Promise.all(promises)
@@ -226,14 +260,13 @@ describe("ERC20FractionToken", function () {
     expect(howMany * wei).to.be.equal(deployerBalanceAfter.sub(deployerBalanceBegin).toNumber());
   });
 
-  it("should buy all the left tokens", async function(){
+  it("should buy all the left tokens", async function() {
     
     let randomWallet = utils.createRandomWallet();
     const fractionContract = new ethers.Contract(ERC20FractionTokenObj.fractionContractAddress, fractionabi, randomWallet);
     
     let remainderTokensBefore = await fractionContract.getRemainderTokens();
 
-    const wei = ethers.utils.parseEther("0.0000000000000001"); // 100 wei
 	  const bidTx = await fractionContract.bid({value:remainderTokensBefore + 100});
 	  await bidTx.wait()
 
@@ -244,48 +277,68 @@ describe("ERC20FractionToken", function () {
     expect(await fractionContract.balanceOf(await randomWallet.getAddress())).to.be.equal(remainderTokensBefore);
 
     // should stage to be finish
-    expect(fractionContract.bid({value:100})).to.be.revertedWith("auction:active stage only");
+    expect(fractionContract.bid({value:100})).to.be.revertedWith("auction: tokens sold out");
 
     const provider = randomWallet.provider;
     const fractionContractBalance = await provider.getBalance(fractionContract.address);
     expect(fractionContractBalance.toNumber()).to.be.equal(0); 
   });
 
-  it("should NOT create random auction contract and get tokens", async function(){
+  it(`should start auction for the third FRACTION contract`, async function() {
     
-    let randomWallet = utils.createRandomWallet(true);
-    let address = await randomWallet.getAddress();
+    let fractionERC20Address = ERC20FractionTokenObjThird.fractionContractAddress;
+    const fractionContract = new ethers.Contract(fractionERC20Address, fractionabi, mainWallet);
 
-    const auctionFactory = await ethers.getContractFactory("Auction", randomWallet);
-
-    let auctionContract = await auctionFactory.deploy(1 ,address,ERC20FractionTokenObj.fractionContractAddress,TOKENS_FOR_SALE,totalSupply);
-    await auctionContract.deployed();
-    console.log("auction contract address ",auctionContract.address);
-    await auctionContract.start();
-
-    const options = { value:ethers.utils.parseEther("0.0000000000000001") }
-    const params = address
-
-	  expect(auctionContract.bid(params,options)).to.be.revertedWith("ERC20: transfer amount exceeds balance")
-    // uint256 _rate, address moderator ,address _token, uint256 _tokensForSale, uint256 _totalSupply
+    let mainWalletAddress = await mainWallet.getAddress();
     
+    const dutchAuctionFactory = await ethers.getContractFactory("DutchAuction", mainWallet);
+    let auctionContract = await dutchAuctionFactory.deploy(1, 20, mainWalletAddress, fractionERC20Address, AUCTION_LENGTH_SECONDS);
+
+    let auctionAddress = await auctionContract.address;
+
+    let tx = await fractionContract.startOffering(
+        auctionAddress,
+        TOKENS_FOR_SALE
+    );
+    
+    await tx.wait()
+
+    let auctionRemainderTokens = await auctionContract.getRemainderTokens();
+    expect(await fractionContract.balanceOf(auctionAddress)).to.be.equal(auctionRemainderTokens);
+    
+    // // 2. concurrent bids for tokens
+    const wei = ethers.utils.parseEther("0.0000000000000005"); // 500 wei
+    let howMany = 2;
+    let walletArray = utils.createRandomWallets(howMany);
+    let promises = walletArray.map((_wlt) => singleBidOver(auctionContract,_wlt,wei));
+    
+    let combinedPromise = Promise.all(promises)
+      .catch((error) => console.log("custom error", error));
+
+    await combinedPromise;
+
+    // // // the tokens are not distrubuted yet
+    let remainderTokens = await auctionContract.getRemainderTokens();
+    expect(remainderTokens).to.be.equal(0);
+    
+    // 0 tokens are left for auciton
+    let lastBid = singleBidOver(auctionContract,utils.createRandomWallet(true),wei) 
+    expect(lastBid).to.be.revertedWith("auction: tokens sold out");
+    // call the end to distribute all the tokens and get the ether
+    // await lastBid;
+    // await auctionContract.end(
+    //   // {
+    //   // gasPrice: 816862499,
+    //   // gasLimit: 30000000
+    // // }
+    // );
+
   });
-
-  // xit("should retrieve all the ", async function(){
-  //   let address = await mainWallet.getAddress();
-  //   const auctionFactory = await ethers.getContractFactory("Auction", mainWallet);
-
-  //   let auctionContract = await auctionFactory.deploy(1,address,ERC20FractionTokenObj.fractionContractAddress,TOKENS_FOR_SALE,totalSupply);
-  //   await auctionContract.deployed();
-  //   console.log("auction contract address ",auctionContract.address);
-
-  //   let randomWallet = utils.createRandomWallet(true);
-  //   auctionContract = auctionContract.connect(randomWallet);
-
-  //   const wei = ethers.utils.parseEther("0.0000000000000001"); // 100 wei
-	//   expect(auctionContract.bid({value:wei})).to.be.revertedWith("ERC20: transfer amount exceeds balance")
-  //   // uint256 _rate, address moderator ,address _token, uint256 _tokensForSale, uint256 _totalSupply
-    
-  // });
-
 });
+
+async function singleBidOver(bidContract ,randomWallet, wei){
+  const contract = bidContract.connect(randomWallet);
+  let addr = await randomWallet.getAddress();
+  let tx = await contract.bid(addr,{value:wei});
+  await tx.wait();
+}

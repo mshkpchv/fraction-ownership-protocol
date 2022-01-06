@@ -4,7 +4,7 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/utils/ERC721Holder.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
-import "./Offering.sol";
+import "./Auction.sol";
 
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "hardhat/console.sol";
@@ -25,14 +25,14 @@ contract ERC20FractionToken is ERC20, ERC721Holder {
 
     address immutable private moderatorNFT;
 
-    Auction private auction;
+    IAuction private auction;
 
     event Buyback(address buyer);
 
-    modifier hasAuction {
+    modifier activeAuction {
         require(
             address(auction) != address(0),
-            "There must be auction!"
+            "auction:not started"
         );
         _;
     }
@@ -45,22 +45,34 @@ contract ERC20FractionToken is ERC20, ERC721Holder {
     }
 
     //TODO auction type
-    function startOffering(uint256 _rate, uint256 _tokensForSale) external virtual returns(address) {
-        require(msg.sender == moderatorNFT," nft moderator can start soffering");
-        require(_tokensForSale < balanceOf(moderatorNFT),"offering: moderator tokens > offering token");
-        require(address(auction) == address(0),"auction:started only one time");
-        require(_rate > 0,"auction:rate >= 0");
+    // function startOffering1(uint256 _rate, uint256 _tokensForSale) external virtual returns(address) {
+    //     require(msg.sender == moderatorNFT," nft moderator can start soffering");
+    //     require(_tokensForSale < balanceOf(moderatorNFT),"offering: moderator tokens > offering token");
+    //     require(address(auction) == address(0),"auction:started only one time");
+    //     require(_rate > 0,"auction:rate >= 0");
 
-        auction = new Auction(_rate, moderatorNFT, address(this), _tokensForSale, totalSupply());
-        // approve(address(auction), _tokensForSale);
+    //     auction = new Auction(_rate, moderatorNFT, address(this), _tokensForSale, totalSupply());
+    //     // approve(address(auction), _tokensForSale);
+    //     transfer(address(auction), _tokensForSale);
+    //     auction.start();
+
+    //     console.log("ERC20FractionToken auction auction", address(auction));
+    //     return address(auction);
+    // }
+
+    function startOffering(address _auction, uint256 _tokensForSale) external virtual {
+        require(msg.sender == moderatorNFT,"nft moderator can start soffering");
+        require(_tokensForSale <= balanceOf(moderatorNFT),"offering: moderator tokens > offering token");
+        require(address(_auction) != address(0),"auction: need valid auction");
+        // TODO check if _auction is subtype of Auction
+
+        auction = IAuction(_auction);
+        // // approve(address(auction), _tokensForSale);
         transfer(address(auction), _tokensForSale);
-        auction.start();
-
-        console.log("ERC20FractionToken auction auction", address(auction));
-        return address(auction);
+        auction.start(_tokensForSale);
     }
 
-    function bid() hasAuction virtual external payable hasAuction {      
+    function bid() virtual external payable activeAuction {      
         console.log("ERC20FractionToken: msg.sender", msg.sender,"msg.value",msg.value);    
         auction.bid{value:msg.value}(msg.sender);
     }
@@ -75,19 +87,19 @@ contract ERC20FractionToken is ERC20, ERC721Holder {
         emit Buyback(sender);   
     }
 
-    function endOffering() external virtual hasAuction {
+    function endOffering() external virtual activeAuction {
         auction.end();
     }
 
-    function getPrice() external view hasAuction returns(uint256) {
+    function getPrice() external view activeAuction returns(uint256) {
         return auction.getPrice();
     }
 
-    function getRemainderTokens() external view hasAuction returns(uint256) {
+    function getRemainderTokens() external view activeAuction returns(uint256) {
         return auction.getRemainderTokens();
     }
 
-    function auctionAddress() external view  hasAuction returns(Auction)  {
+    function auctionAddress() external view  activeAuction returns(IAuction)  {
         return auction;
     }
 }
