@@ -14,8 +14,8 @@ describe("ERC20FractionTokenFactory", function () {
   let ERC20FractionTokenObj = null;
 
   before(async function(){
-    // mainWallet = await ethers.getSigner()
-    mainWallet = utils.createRandomWallet(true);
+    mainWallet = await ethers.getSigner()
+    // mainWallet = utils.createRandomWallet(true);
 
     let ipfs_uri = `${process.env.IPFS_NFT_URI}` 
     let nft_uris = Array(mintNFTnumber).fill(ipfs_uri);
@@ -56,14 +56,16 @@ describe("ERC20FractionTokenFactory", function () {
       1,
       100
     );
-    expect(tx).to.be.revertedWith("reverted with reason string 'ERC721: transfer caller is not owner nor approved")
+    expect(tx).to.be.revertedWith("ERC721: transfer caller is not owner nor approved")
   })
 
-  it("show the owner of the tokens", async function() {
+  it("should show the owner of the tokens", async function() {
     let token = tokenIds[0]
     let result = await NFTContract.ownerOf(token);
     let addr = await mainWallet.getAddress();
-    expect(result).to.be.equal(addr)
+    
+    expect(result).to.be.equal(addr);
+
   });
 
   it("should transfer NFT to Fraction ERC20 contract", async function(){

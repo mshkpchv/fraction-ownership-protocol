@@ -94,6 +94,7 @@ abstract contract BaseAuction is IAuction {
     }
 
     function bid(address recipient) external payable override {
+        console.log("Auction",msg.sender,msg.value);
         require(stage == Stage.ACTIVE,"auction:active stage only");
         require(block.timestamp < auctionEnd, "auction: time ended");
         
@@ -194,8 +195,8 @@ contract FIFOAuction is BaseAuction {
     }
 
     function _updatePurchase(address recipient, uint256 tokens, uint256 amountInWei) internal override virtual {
-        tokensForSale = tokensForSale.sub(tokens);
         token.transfer(recipient, tokens);
+        tokensForSale = tokensForSale.sub(tokens);
     }
 
     function _forwardFunds() override internal virtual  {
@@ -215,7 +216,7 @@ contract FIFOAuction is BaseAuction {
     }
 }
 
-contract DutchAuction is FIFOAuction {
+contract DutchAuction is BaseAuction {
     using SafeMath for uint256;
 
     uint256 private maxReserveRate;
@@ -232,7 +233,7 @@ contract DutchAuction is FIFOAuction {
     address[] private participantsAddresses;
     
 
-    constructor(uint256 _rate, uint256 _maxRate, address moderator ,address _token,uint256 _auctionLength) FIFOAuction(_rate,  moderator , _token, _auctionLength) {
+    constructor(uint256 _rate, uint256 _maxRate, address moderator ,address _token,uint256 _auctionLength) BaseAuction(_rate,  moderator , _token, _auctionLength) {
             require(_rate < _maxRate,"the price cannot go up max rate");
             maxReserveRate = _maxRate;
             finalRateForDistribution = _rate;
@@ -290,10 +291,6 @@ contract DutchAuction is FIFOAuction {
     function _preValidatePurchase(address recipient, uint256 tokens) internal override view {
         require(!participants[recipient], "auction:only one purchase per address");
         super._preValidatePurchase(recipient,tokens);
-    }
-
-    function _forwardFunds() override internal {
-        // we do not forward tokens before token sale ends
     }
 
     function getRemainderTokens() override external view returns(uint256) {
