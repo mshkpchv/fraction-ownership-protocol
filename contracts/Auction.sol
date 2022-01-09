@@ -263,17 +263,13 @@ contract DutchAuction is BaseAuction {
     }
 
     // distrbute the tokens to their holder
-    function _endAuction() virtual internal override {
-        
+    function _endAuction() virtual internal override {        
         // distribute the tokens and
-        console.log("finalRateForDistribution",finalRateForDistribution);
-
         for(uint i = 0; i < participantsAddresses.length; i++) {
             address current = participantsAddresses[i];
             uint256 amountInWei = _balancesWEI[current];
 
             uint256 purchaseTokens = finalRateForDistribution.mul(amountInWei);
-            console.log("current",current,amountInWei,purchaseTokens);
 
             token.transfer(current, purchaseTokens);
             payable(wallet).transfer(amountInWei);
@@ -320,7 +316,6 @@ contract DutchAuction is BaseAuction {
     }
 
     function _calcRemainderTokens(uint256 _rate) internal view returns(uint256) {
-        console.log("all", allTokensForSale, amountInWeiRaised, rate);
         uint256 temp = _rate.mul(amountInWeiRaised);
         if (allTokensForSale >= temp){
             return allTokensForSale.sub(temp);
@@ -332,8 +327,6 @@ contract DutchAuction is BaseAuction {
     function _calcRateAddition() view internal returns(uint256) {
         uint256 currentTimestamp = block.timestamp;
         uint256 newRate = _remapRange(currentTimestamp,auctionStart,auctionEnd,rate,maxReserveRate);
-        console.log("remap",currentTimestamp, auctionStart,auctionEnd);
-        console.log("remap",newRate, rate, maxReserveRate);
         return newRate;
     }
     
