@@ -1,5 +1,4 @@
 const { ethers } = require("hardhat");
-const { waffle } = require("hardhat");
 
 const init = function() {
 

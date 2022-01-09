@@ -23,6 +23,16 @@ task("deploy-nft", "Deploys contract on a provided network",
     const deployNFT = require("./scripts/deploy-nft.js");
     await deployNFT();
 });
+
+task("deploy-fractionFactory", "Deploys contract on a provided network",
+  async (taskArgs, hre) => {
+    let wallet= await hre.ethers.getSigner()
+    const fractionFactory = await hre.ethers.getContractFactory("ERC20FractionTokenFactory", wallet);
+    FRACTION_CONTRACT = await fractionFactory.deploy();
+    await FRACTION_CONTRACT.deployed();
+    console.log(FRACTION_CONTRACT.address);
+});
+
 // You need to export an object to set up your config
 // Go to https://hardhat.org/config/ to learn more
 

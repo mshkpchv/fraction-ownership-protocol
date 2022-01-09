@@ -4,10 +4,8 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/utils/ERC721Holder.sol";
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
-import "./Auction.sol";
-
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
-import "hardhat/console.sol";
+import "./Auction.sol";
 
 /**
  * @dev Implementation of the {ERC20} interface.
@@ -44,22 +42,11 @@ contract ERC20FractionToken is ERC20, ERC721Holder {
        _mint(_moderatorNFT,_tokenSupply);
     }
 
-    //TODO auction type
-    // function startOffering1(uint256 _rate, uint256 _tokensForSale) external virtual returns(address) {
-    //     require(msg.sender == moderatorNFT," nft moderator can start soffering");
-    //     require(_tokensForSale < balanceOf(moderatorNFT),"offering: moderator tokens > offering token");
-    //     require(address(auction) == address(0),"auction:started only one time");
-    //     require(_rate > 0,"auction:rate >= 0");
-
-    //     auction = new Auction(_rate, moderatorNFT, address(this), _tokensForSale, totalSupply());
-    //     // approve(address(auction), _tokensForSale);
-    //     transfer(address(auction), _tokensForSale);
-    //     auction.start();
-
-    //     console.log("ERC20FractionToken auction auction", address(auction));
-    //     return address(auction);
-    // }
-
+    /**
+     * @dev start auction for  tokens 
+     * @param _auction: auction address which is IAuction compatible
+     * @param _tokensForSale: number of tokens to be transfer to the auction contract
+     */
     function startOffering(address _auction, uint256 _tokensForSale) external virtual {
         require(msg.sender == moderatorNFT,"nft moderator can start soffering");
         require(_tokensForSale <= balanceOf(moderatorNFT),"offering: moderator tokens > offering token");
@@ -72,11 +59,9 @@ contract ERC20FractionToken is ERC20, ERC721Holder {
         auction.start(_tokensForSale);
     }
 
-    function bid() virtual external payable activeAuction {      
-        console.log("ERC20FractionToken: msg.sender", msg.sender,"msg.value",msg.value);    
-        auction.bid{value:msg.value}(msg.sender);
-    }
-
+        /**
+     * @dev buyback the NFT if you have the all the tokens
+     */
     function buyback() external {
         // must have 100% of the tokens
         uint256 supply = totalSupply();
@@ -87,11 +72,16 @@ contract ERC20FractionToken is ERC20, ERC721Holder {
         emit Buyback(sender);   
     }
 
+
+    function bid() virtual external payable activeAuction {      
+        auction.bid{value:msg.value}(msg.sender);
+    }
+
     function endOffering() external virtual activeAuction {
         auction.end();
     }
 
-    function getPrice() external view activeAuction returns(uint256) {
+    function getPrice() external view  activeAuction returns(uint256) {
         return auction.getPrice();
     }
 

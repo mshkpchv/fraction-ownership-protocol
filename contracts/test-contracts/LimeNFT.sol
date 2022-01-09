@@ -13,8 +13,9 @@ contract LimeNFT is ERC721URIStorage, Ownable {
 
     constructor() ERC721("LimeNFT", "LMT") {}
 
+    // do not putt onlyOwner, just for testing purposes
     function mintNFT(address recipient, string memory tokenURI)
-        public onlyOwner
+        public
         returns (uint256)
     {
         _tokenIds.increment();

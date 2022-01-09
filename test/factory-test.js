@@ -85,6 +85,13 @@ describe("ERC20FractionTokenFactory", function () {
     let address = await mainWallet.getAddress();
     let tokens = await NFTContract.balanceOf(address);
     expect(tokens).to.be.equal(mintNFTnumber - 1);
+
+    let count =  await FRACTION_CONTRACT.tokenCount();
+    expect(count).to.be.equal(1);
+    
+    let fractionedERC20 = await FRACTION_CONTRACT.tokens(0);
+    expect(fractionedERC20).to.be.equal(ERC20FractionTokenObj.fractionContractAddress);
+
   })
 
   it("should get the event from ERC20FractionTokenFactory ", async function(){

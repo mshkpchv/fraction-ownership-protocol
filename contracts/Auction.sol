@@ -20,6 +20,10 @@ interface IAuction {
 
 }
 
+/**
+ Base Auction contract implemeting the interface and making some abstract methods
+ for easy plugin to auction contract
+ */
 abstract contract BaseAuction is IAuction {
     using SafeMath for uint256;
 
@@ -27,6 +31,11 @@ abstract contract BaseAuction is IAuction {
 
     uint256 internal constant MIN_AUCTION_LENGTH = 10 seconds;
 
+    // stages which every auction could move into
+    //
+    //                    --->ACTIVE_NO_SUPPLY ----> FINISHED 
+    // INACTIVE -> ACTIVE |----------------------> FINISHED
+    //
     enum Stage {
         INACTIVE,
         ACTIVE,
@@ -36,7 +45,7 @@ abstract contract BaseAuction is IAuction {
 
     Stage public stage;
 
-    // The token being sold
+    // The IERC20 token being sold
     IERC20 internal token;
 
     // Address where funds are collected
@@ -46,9 +55,11 @@ abstract contract BaseAuction is IAuction {
     uint256 internal rate;
 
     //TODO solidity does not support double numbers, so we cannot use weiAmount * 0.1
-    // we must use weiAmount / 10 = weiAmount * 0,1
+    // we must use weiAmount / 10 = weiAmount * 0,1. For this we need indicator to know
+    // when to multiply or divide
     bool internal ratePositive;
 
+    // tokens for sale in format n * 10**18
     uint256 internal tokensForSale;
 
     // 
@@ -94,7 +105,6 @@ abstract contract BaseAuction is IAuction {
     }
 
     function bid(address recipient) external payable override {
-        console.log("Auction",msg.sender,msg.value);
         require(stage == Stage.ACTIVE,"auction:active stage only");
         require(block.timestamp < auctionEnd, "auction: time ended");
         
@@ -129,21 +139,21 @@ abstract contract BaseAuction is IAuction {
         emit End();
     }
 
+    function getPrice() virtual external view override returns(uint256) {
+        return WEI.div(rate);
+    }
+
+    function getRemainderTokens() virtual external view override returns(uint256) {
+        return tokensForSale;
+    }
+
     function _inAdvanceEnd() internal virtual {   
         // require(stage == Stage.ACTIVE,"auction:active stage");
         // stage = Stage.ACTIVE_NO_SUPPLY;
     }
 
-    function getPrice() virtual external view override returns(uint256) {
-        return WEI.div(rate);
-    }
-
     function _calcTokenAmount(uint256 weiAmount) virtual internal view  returns (uint256) {
         return rate.mul(weiAmount);
-    }
-
-    function getRemainderTokens() virtual external view override returns(uint256) {
-        return tokensForSale;
     }
      
     function _preValidatePurchase(address recipient, uint256 tokens) internal virtual view {
@@ -178,7 +188,11 @@ abstract contract BaseAuction is IAuction {
 
 
 }
-// first in first out auction
+
+/**
+ Auction contract implemeting the logic for hosting
+ Ducth auctions
+ */
 contract FIFOAuction is BaseAuction {
     using SafeMath for uint256;
 
@@ -216,6 +230,10 @@ contract FIFOAuction is BaseAuction {
     }
 }
 
+/**
+ Auction contract implemeting the logic for hosting
+ Ducth auctions
+ */
 contract DutchAuction is BaseAuction {
     using SafeMath for uint256;
 
